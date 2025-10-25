@@ -19,13 +19,33 @@ cd MyWork
 ### 2. Install Required Packages
 
 ```bash
-# TODO
+# Create conda environment
+conda create -n env_isaaclab python=3.11
 
+# Activate environment
+conda activate env_isaaclab
+
+# Upgrade pip
+pip install --upgrade pip
+
+# Install PyTorch with CUDA support
+pip install torch==2.7.0 torchvision==0.22.0 --index-url https://download.pytorch.org/whl/cu128
+
+# Install Isaac Sim
+pip install "isaacsim[all,extscache]==5.0.0" --extra-index-url https://pypi.nvidia.com
+
+# Install additional required packages
+pip3 install onnx
+pip3 install mujoco
+pip3 install onnxruntime
 ```
 
 ### 3. Execution
 
 ```bash
+# Activate conda environment first
+conda activate env_isaaclab
+
 # Use all options
 python3 my_code_unified.py --motion_file dance2_subject5 --policy_file dance2_subject5 --duration 30.0
 

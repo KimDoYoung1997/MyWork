@@ -104,8 +104,8 @@ def parse_arguments():
     parser.add_argument(
         '--duration', 
         type=float, 
-        default=3.0,
-        help='시뮬레이션 지속 시간 (초). 기본값: 3.0'
+        default=30.0,
+        help='시뮬레이션 지속 시간 (초). 기본값: 30.0'
     )
     
     return parser.parse_args()
