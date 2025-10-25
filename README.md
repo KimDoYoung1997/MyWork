@@ -4,8 +4,6 @@
 
 ### 1. 저장소 클론
 
-이 저장소는 Git LFS(Large File Storage)를 사용하여 대용량 파일들을 관리합니다. 따라서 일반적인 `git clone` 대신 다음 명령어를 사용해야 합니다:
-
 ```bash
 # Git LFS가 설치되어 있지 않은 경우 먼저 설치
 sudo apt update && sudo apt install git-lfs -y
