@@ -32,8 +32,19 @@ Isaac Lab에서 학습된 정책을 MuJoCo 환경에서 실행하여 모션 트�
   * joint_vel: Reference motion의 관절 속도 (29차원)
 - ONNX 모델: Isaac Lab에서 export된 학습된 정책
   * 메타데이터: joint_names, default_joint_pos, action_scale 등
+
+=== 사용법 ===
+기본 사용법:
+    python my_code_unified.py
+
+특정 모션과 정책 사용:
+    python my_code_unified.py --motion_file dance2_subject5 --policy_file dance2_subject5
+
+도움말 보기:
+    python my_code_unified.py --help
 """
 
+import argparse
 import time
 import onnx
 from datetime import datetime
@@ -51,21 +62,79 @@ from modules.transforms import compute_relative_transform_mujoco
 from modules.controller import pd_control
 
 
+def parse_arguments():
+    """명령행 인자를 파싱합니다."""
+    parser = argparse.ArgumentParser(
+        description="Beyond Mimic Sim2Sim MuJoCo Deploy Script",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+사용 예시:
+  # 기본 사용법 (dance1_subject1 사용)
+  python my_code_unified.py
+
+  # 특정 모션과 정책 사용
+  python my_code_unified.py --motion_file dance2_subject5 --policy_file dance2_subject5
+
+  # 시뮬레이션 시간 변경
+  python my_code_unified.py --duration 10.0
+
+  # 모든 옵션 사용
+  python my_code_unified.py --motion_file dance2_subject5 --policy_file dance2_subject5 --duration 5.0
+
+사용 가능한 모션/정책:
+  - dance1_subject1 (기본값)
+  - dance2_subject5
+        """
+    )
+    
+    parser.add_argument(
+        '--motion_file', 
+        type=str, 
+        default='dance1_subject1',
+        help='사용할 모션 파일명 (확장자 제외). 기본값: dance1_subject1'
+    )
+    
+    parser.add_argument(
+        '--policy_file', 
+        type=str, 
+        default='dance1_subject1',
+        help='사용할 정책 파일명 (확장자 제외). 기본값: dance1_subject1'
+    )
+    
+    parser.add_argument(
+        '--duration', 
+        type=float, 
+        default=3.0,
+        help='시뮬레이션 지속 시간 (초). 기본값: 3.0'
+    )
+    
+    return parser.parse_args()
+
 
 if __name__ == "__main__":
+    # 명령행 인자 파싱
+    args = parse_arguments()
+    
+    print("="*60)
+    print("Beyond Mimic Sim2Sim MuJoCo Deploy")
+    print("="*60)
+    print(f"모션 파일: {args.motion_file}")
+    print(f"정책 파일: {args.policy_file}")
+    print(f"시뮬레이션 시간: {args.duration}초")
+    print("="*60)
 
     # =============================================================================
     # 1. 시뮬레이션 환경 설정
     # =============================================================================
     xml_path = "./unitree_description/mjcf/g1.xml"
-    simulation_duration = 3.0                                              # 시뮬레이션 총 시간 (초) - 테스트용
+    simulation_duration = args.duration                                    # 명령행 인자로 받은 시뮬레이션 시간
     simulation_dt = 0.005                                                   # Isaac Lab과 동일한 시뮬레이션 타임스텝 (0.005초 = 200Hz)
     control_decimation = 4                                                  # Isaac Lab과 동일한 제어기 업데이트 주파수 (simulation_dt * control_decimation = 0.02초; 50Hz)    
     # =============================================================================
     
     # 2. 모션 데이터 로드 (Isaac Lab에서 export된 NPZ 파일)
     # =============================================================================
-    motion_file = "./npzs/dance1_subject1_motion.npz"
+    motion_file = f"./npzs/{args.motion_file}_motion.npz"
     mocap =  np.load(motion_file)
     mocap_pos = mocap["body_pos_w"]        # 논문의 Reference Motion 위치 데이터 , np.shape(mocap_pos) = (6574, 30, 3)
     mocap_quat = mocap["body_quat_w"]      # 논문의 Reference Motion 자세 데이터 , np.shape(mocap_quat) = (6574, 30, 4)
@@ -75,7 +144,7 @@ if __name__ == "__main__":
     
     # 3. 학습된 정책 로드 (Isaac Lab에서 export된 ONNX 모델)
     # =============================================================================
-    policy_path = "./policies/dance1_subject1_policy.onnx"
+    policy_path = f"./policies/{args.policy_file}_policy.onnx"
     num_actions = 29    # 29개의 관절 조절 (G1 로봇의 관절 수)
     num_obs = 160  # ONNX 모델 Metadata 관찰값 차원 : 160차원    
     # =============================================================================
@@ -358,7 +427,6 @@ if __name__ == "__main__":
         print("   시뮬레이션이 정상적으로 실행되지 않았을 수 있습니다.")
         
         
-        
 
     # =============================================================================
     # 9. 성능 플롯 생성 및 저장
@@ -368,7 +436,7 @@ if __name__ == "__main__":
     print("="*60)
 
     # 성능 플롯 저장 (commands.py 기반 지표만)
-    save_performance_plots(additional_metrics, save_dir="./performance_plots/dance1_subject1_motion")
+    save_performance_plots(additional_metrics, save_dir=f"./performance_plots/{args.motion_file}_motion")
 
     print("="*60)
     print("Beyond Mimic Sim-to-Sim Deploy 완료")

@@ -1,48 +1,57 @@
 # MyWork
 
-## 설치 및 실행 방법
+## Installation and Execution Guide
 
-### 1. 저장소 클론
+### 1. Clone Repository
 
 ```bash
-# Git LFS가 설치되어 있지 않은 경우 먼저 설치
+# Install Git LFS if not already installed
 sudo apt update && sudo apt install git-lfs -y
 
-# Git LFS 초기화
+# Initialize Git LFS
 git lfs install
 
-# 저장소 클론 (LFS 파일들도 함께 다운로드)
+# Clone repository (including LFS files)
 git clone https://github.com/KimDoYoung1997/MyWork.git
 cd MyWork
 ```
 
-### 2. 필요한 패키지 설치
+### 2. Install Required Packages
 
 ```bash
 # TODO
 
 ```
 
-### 3. 실행
+### 3. Execution
 
 ```bash
-# 메인 스크립트 실행
-python my_code_renewal.py
-# 또는
-python my_code_renewal2.py
+# Use all options
+python3 my_code_unified.py --motion_file dance2_subject5 --policy_file dance2_subject5 --duration 5.0
+
+# Show help
+python3 my_code_unified.py --help
 ```
 
+#### Available Options:
+- `--motion_file`: Motion file name (without extension, default: dance1_subject1)
+- `--policy_file`: Policy file name (without extension, default: dance1_subject1)  
+- `--duration`: Simulation duration in seconds (default: 3.0)
 
-## 프로젝트 구조
+#### Available Motion/Policy Files:
+- `dance1_subject1` (default)
+- `dance2_subject5`
+
+
+## Project Structure
 
 ```
 MyWork/
-├── config/                # 설정 파일
-├── modules/               # Python 모듈
-├── npzs/                  # 모션 데이터 파일
-├── performance_plots/     # 성능 분석 플롯
-├── policies/              # 학습된 정책 파일
-├── unitree_description/   # Unitree 로봇 파일
-├── my_code_renewal.py     # 메인 스크립트
-└── my_code_renewal2.py    # 대안 스크립트
+├── config/                # Configuration files
+├── modules/               # Python modules
+├── npzs/                  # Motion data files
+├── performance_plots/     # Performance analysis plots
+├── policies/              # Trained policy files
+├── unitree_description/   # Unitree robot files
+└── my_code_unified.py     # Unified main script
 ```
