@@ -27,7 +27,7 @@ cd MyWork
 
 ```bash
 # Use all options
-python3 my_code_unified.py --motion_file dance2_subject5 --policy_file dance2_subject5 --duration 5.0
+python3 my_code_unified.py --motion_file dance2_subject5 --policy_file dance2_subject5 --duration 30.0
 
 # Show help
 python3 my_code_unified.py --help
@@ -36,7 +36,7 @@ python3 my_code_unified.py --help
 #### Available Options:
 - `--motion_file`: Motion file name (without extension, default: dance1_subject1)
 - `--policy_file`: Policy file name (without extension, default: dance1_subject1)  
-- `--duration`: Simulation duration in seconds (default: 3.0)
+- `--duration`: Simulation duration in seconds (default: 30.0)
 
 #### Available Motion/Policy Files:
 - `dance1_subject1` (default)
