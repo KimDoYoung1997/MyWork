@@ -47,10 +47,10 @@ pip3 install onnxruntime
 conda activate env_isaaclab
 
 # Use all options
-python3 my_code_unified.py --motion_file dance2_subject5 --policy_file dance2_subject5 --duration 30.0
+python3 main.py --motion_file dance2_subject5 --policy_file dance2_subject5 --duration 30.0
 
 # Show help
-python3 my_code_unified.py --help
+python3 main.py --help
 ```
 
 #### Available Options:
@@ -73,5 +73,5 @@ MyWork/
 ├── performance_plots/     # Performance analysis plots
 ├── policies/              # Trained policy files
 ├── unitree_description/   # Unitree robot files
-└── my_code_unified.py     # Unified main script
+└── main.py     # Unified main script
 ```
