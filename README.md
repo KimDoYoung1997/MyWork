@@ -21,11 +21,8 @@ cd MyWork
 ### 2. 필요한 패키지 설치
 
 ```bash
-# Python 패키지 설치 (requirements.txt가 있다면)
-pip install -r requirements.txt
+# TODO
 
-# 또는 필요한 패키지들을 개별적으로 설치
-pip install numpy matplotlib pandas scipy
 ```
 
 ### 3. 실행
@@ -37,39 +34,17 @@ python my_code_renewal.py
 python my_code_renewal2.py
 ```
 
-## Git LFS에 대한 추가 정보
-
-이 저장소는 다음 파일 형식들을 Git LFS로 관리합니다:
-- `.dae` - 3D 모델 파일
-- `.STL` - STL 메시 파일
-- `.obj` - OBJ 메시 파일
-- `.npz` - NumPy 압축 데이터 파일
-- `.onnx` - ONNX 모델 파일
-- `.png` - 이미지 파일
-
-### 일반적인 Git LFS 명령어
-
-```bash
-# LFS 파일 상태 확인
-git lfs status
-
-# LFS 파일들 수동 다운로드
-git lfs pull
-
-# LFS 파일들 수동 업로드
-git lfs push origin main
-```
 
 ## 프로젝트 구조
 
 ```
 MyWork/
-├── config/                 # 설정 파일들
-├── modules/               # Python 모듈들
-├── npzs/                  # 모션 데이터 파일들
-├── performance_plots/     # 성능 분석 플롯들
-├── policies/              # 학습된 정책 파일들
-├── unitree_description/   # Unitree 로봇 설명 파일들
+├── config/                # 설정 파일
+├── modules/               # Python 모듈
+├── npzs/                  # 모션 데이터 파일
+├── performance_plots/     # 성능 분석 플롯
+├── policies/              # 학습된 정책 파일
+├── unitree_description/   # Unitree 로봇 파일
 ├── my_code_renewal.py     # 메인 스크립트
 └── my_code_renewal2.py    # 대안 스크립트
 ```
