@@ -78,3 +78,6 @@ MyWork/
 ├── unitree_description/   # Unitree robot files
 └── main.py     # Unified main script
 ```
+## Reference
+- [Whole Body Tracking](https://github.com/HybridRobotics/whole_body_tracking.git)
+- [Unitree MuJoCo](https://github.com/unitreerobotics/unitree_mujoco)
