@@ -1,5 +1,8 @@
 # MyWork
 
+![mujoco-deployment](imgs/mujoco_deployment.gif)
+
+
 ## Installation and Execution Guide
 
 ### 1. Clone Repository
