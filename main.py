@@ -35,13 +35,13 @@ Isaac Lab에서 학습된 정책을 MuJoCo 환경에서 실행하여 모션 트�
 
 === 사용법 ===
 기본 사용법:
-    python my_code_unified.py
+    python main.py
 
 특정 모션과 정책 사용:
-    python my_code_unified.py --motion_file dance2_subject5 --policy_file dance2_subject5
+    python main.py --motion_file dance2_subject5 --policy_file dance2_subject5
 
 도움말 보기:
-    python my_code_unified.py --help
+    python main.py --help
 """
 
 import argparse
@@ -70,16 +70,16 @@ def parse_arguments():
         epilog="""
 사용 예시:
   # 기본 사용법 (dance1_subject1 사용)
-  python my_code_unified.py
+  python main.py
 
   # 특정 모션과 정책 사용
-  python my_code_unified.py --motion_file dance2_subject5 --policy_file dance2_subject5
+  python main.py --motion_file dance2_subject5 --policy_file dance2_subject5
 
   # 시뮬레이션 시간 변경
-  python my_code_unified.py --duration 10.0
+  python main.py --duration 10.0
 
   # 모든 옵션 사용
-  python my_code_unified.py --motion_file dance2_subject5 --policy_file dance2_subject5 --duration 5.0
+  python main.py --motion_file dance2_subject5 --policy_file dance2_subject5 --duration 5.0
 
 사용 가능한 모션/정책:
   - dance1_subject1 (기본값)
