@@ -134,19 +134,24 @@ if __name__ == "__main__":
     
     # 2. 모션 데이터 로드 (Isaac Lab에서 export된 NPZ 파일)
     # =============================================================================
-    motion_file = f"./npzs/{args.motion_file}_motion.npz"
+    motion_file = f"./npzs/{args.motion_file}.npz"
     mocap =  np.load(motion_file)
     mocap_pos = mocap["body_pos_w"]        # 논문의 Reference Motion 위치 데이터 , np.shape(mocap_pos) = (6574, 30, 3)
     mocap_quat = mocap["body_quat_w"]      # 논문의 Reference Motion 자세 데이터 , np.shape(mocap_quat) = (6574, 30, 4)
     mocap_joint_pos = mocap["joint_pos"]   # 논문의 c = [q_joint,m, v_joint,m] 중 관절 위치 부분 , np.shape(mocap_joint_pos) = (6574, 29)
-    mocap_joint_vel = mocap["joint_vel"]   # 논문의 c = [q_joint,m, v_joint,m] 중 관절 속도 부분 , np.shape(mocap_joint_vel) = (6574, 29)    
+    mocap_joint_vel = mocap["joint_vel"]   # 논문의 c = [q_joint,m, v_joint,m] 중 관절 속도 부분 , np.shape(mocap_joint_vel) = (6574, 29)
+    
+    # Get motion data length
+    motion_length = mocap_joint_pos.shape[0]
+    print(f"Motion data length: {motion_length} frames")
+    print(f"Maximum simulation time (at 50Hz): {motion_length / 50:.1f} seconds")
     # =============================================================================
     
     # 3. 학습된 정책 로드 (Isaac Lab에서 export된 ONNX 모델)
     # =============================================================================
     policy_path = f"./policies/{args.policy_file}_policy.onnx"
     num_actions = 29    # 29개의 관절 조절 (G1 로봇의 관절 수)
-    num_obs = 160  # ONNX 모델 Metadata 관찰값 차원 : 160차원    
+    
     # =============================================================================
     
     # 4. Sim-to-Sim 호환성을 위한 관절 순서 매핑
@@ -165,6 +170,13 @@ if __name__ == "__main__":
     # Isaac Lab에서 export된 ONNX 모델의 메타데이터를 읽어서 MuJoCo 환경의 설정을 동기화합니다.
     # 이를 통해 sim2sim 변환을 달성하고 정책이 올바르게 동작하도록 합니다.
     rl_model: onnx.ModelProto = onnx.load(policy_path)
+
+    # Observation structure tracking
+    observation_names = []
+    has_motion_anchor_pos_b = False
+    has_motion_anchor_ori_b = False
+    has_base_lin_vel = False
+    has_base_ang_vel = False
 
     # Isaac Lab에서 RL 정책 훈련을 isaac_joint_seq 순서로 학습했으므로,
     # MuJoCo에서 실행할 때는 mujoco_joint_seq(g1.xml) 순서로 변환해야 합니다.
@@ -196,9 +208,46 @@ if __name__ == "__main__":
             # 이는 Mujoco로 변환을 하지 않는데, 
             # 논문의 액션 스케일링에 해당합니다.
             isaac_action_scale_array = np.array([float(x) for x in prop.value.split(",")])
+        
+        if prop.key == "observation_names":
+            # Parse observation structure
+            observation_names = prop.value.split(",")
+            has_motion_anchor_pos_b = "motion_anchor_pos_b" in observation_names
+            has_motion_anchor_ori_b = "motion_anchor_ori_b" in observation_names
+            has_base_lin_vel = "base_lin_vel" in observation_names
+            has_base_ang_vel = "base_ang_vel" in observation_names
             
         print(f"{prop.key}: {prop.value}")
-        print("\n")    # =============================================================================
+        print("\n")
+    
+    # Calculate observation dimension dynamically
+    # motion_anchor_pos_b: 3D position (3)
+    # motion_anchor_ori_b: rotation matrix (6)
+    num_obs = 0
+    has_both_anchor = has_motion_anchor_pos_b and has_motion_anchor_ori_b
+    
+    for obs_name in observation_names:
+        if obs_name == "command":
+            num_obs += 58  # reference motion (29 + 29)
+        elif obs_name == "motion_anchor_pos_b":
+            num_obs += 3  # 3D position
+        elif obs_name == "motion_anchor_ori_b":
+            # motion_anchor_ori_b is always 6 dimensions (rotation matrix 2x3)
+            num_obs += 6
+        elif obs_name == "base_lin_vel":
+            num_obs += 3  # 3D linear velocity
+        elif obs_name == "base_ang_vel":
+            num_obs += 3  # 3D angular velocity
+        elif obs_name == "joint_pos":
+            num_obs += num_actions  # 29 joint positions
+        elif obs_name == "joint_vel":
+            num_obs += num_actions  # 29 joint velocities
+        elif obs_name == "actions":
+            num_obs += num_actions  # 29 previous actions
+    
+    print(f"Observation dimension: {num_obs}")
+    print(f"Observation structure: {observation_names}")
+    print("\n")    # =============================================================================
 
 
     # =============================================================================
@@ -272,16 +321,19 @@ if __name__ == "__main__":
                 # =============================================================================
                 # 7.3.1 현재 로봇 상태 및 목표 모션 데이터 추출
                 # =============================================================================
+                # Clamp timestep to motion data range to prevent index out of bounds
+                safe_timestep = min(timestep, motion_length - 1)
+                
                 # mujoco_anchor_body_id = 16
                 mujoco_robot_anchor_pos: np.ndarray = mj_data.xpos[mujoco_anchor_body_id]              # 현재 로봇 앵커 바디 위치 (torso_link) , eg) array([-3.9635000e-03, -3.5901179e-21,  8.3332125e-01])
                 mujoco_robot_anchor_quat: np.ndarray = mj_data.xquat[mujoco_anchor_body_id]           # 현재 로봇 앵커 바디 자세 (torso_link)
                 
                 # 논문의 c = [q_joint,m, v_joint,m] 구성 (Reference phase) : 이 vector는 매 time step마다 policy에 입력되어 로봇의 다음 행동을 결정하는 데 사용됩니다.
-                mocap_reference_phase = np.concatenate((mocap_joint_pos[timestep,:],mocap_joint_vel[timestep,:]),axis=0)    # shape : (58,) = (29+29)의 concat
+                mocap_reference_phase = np.concatenate((mocap_joint_pos[safe_timestep,:],mocap_joint_vel[safe_timestep,:]),axis=0)    # shape : (58,) = (29+29)의 concat
                 
                 # 목표 모션의 앵커 바디 상태, c ∈ ℝ^58
-                mocap_anchor_pos = mocap_pos[timestep, isaac_anchor_body_id, :]  # 목표 모션 앵커 바디 위치 eg) array([-3.6416985e-03, -7.5313076e-04,  8.4310246e-01], dtype=float32)
-                mocap_anchor_quat = mocap_quat[timestep, isaac_anchor_body_id, :]  # 목표 모션 앵커 바디 자세
+                mocap_anchor_pos = mocap_pos[safe_timestep, isaac_anchor_body_id, :]  # 목표 모션 앵커 바디 위치 eg) array([-3.6416985e-03, -7.5313076e-04,  8.4310246e-01], dtype=float32)
+                mocap_anchor_quat = mocap_quat[safe_timestep, isaac_anchor_body_id, :]  # 목표 모션 앵커 바디 자세
                 
                 # =============================================================================
                 # 7.3.2 앵커링을 통한 상대 변환 계산 (논문의 ξ_{b_anchor})
@@ -302,45 +354,57 @@ if __name__ == "__main__":
                 mujoco.mju_quat2Mat(anchor_quat_track_error, temp_anchor_quat_track_error)    # convert quaternion to 3D rotation matrix, 초기화된 anchor_ori 에 anchor_quat_track_error(quaternion) 의 회전 행렬 저장 , anchor_ori.shape=(9,)
                 anchor_quat_track_error = anchor_quat_track_error.reshape(3, 3)[:, :2]  # 첫 2열만 사용 (6차원)
                 anchor_quat_track_error = anchor_quat_track_error.reshape(-1,)
-                # =============================================================================
-                # 7.3.3 논문의 Observation 구성 구현
-                # =============================================================================
-                # 논문의 o = [c, ξ_{b_anchor}, V_{b_root}, q_joint,r, v_joint,r, a_last] 구현
-                # Sim-to-Sim 핵심: 좌표계 변환 없이도 작동하는 상대적 관찰값 사용
                 
+                # =============================================================================
+                # 7.3.3 논문의 Observation 구성 구현 (Dynamic based on policy)
+                # =============================================================================
+                # Build observation dynamically based on policy's observation_names
                 offset = 0
                 
-                # 1. c ∈ ℝ^58 : Reference Motion의 관절 위치 및 속도 (29+29)
-                obs[offset:offset + 58] = mocap_reference_phase       # 논문의 c = [q_joint,m, v_joint,m]
-                offset += 58
-                
-                # 2. ξ_{b_anchor} ∈ ℝ^9 : Anchor Body의 자세 추적 오차 (3+6)
-                obs[offset:offset + 3] = anchor_pos_track_error         # 논문의 ξ_{b_anchor} 위치 부분 (3차원)
-                offset += 3
-                obs[offset:offset + 6] = anchor_quat_track_error                    # 논문의 ξ_{b_anchor} 회전 부분 (6차원)
-                offset += 6
-                
-                # 3. V_{b_root} ∈ ℝ^6 : Robot's root twist expressed in root frame (3+3)
-                obs[offset:offset + 3] = mj_data.qvel[0:3]             # 베이스 선형 속도 (3차원)
-                offset += 3
-                obs[offset:offset + 3] = mj_data.qvel[3 : 6]          # 베이스 각속도 (3차원)
-                offset += 3
-                
-                # 4. q_joint,r ∈ ℝ^29 : 로봇의 모든 Joint의 현재 각도 (절대값)
-                # 논문에서는 절대 관절 위치를 사용하므로 기본 관절 위치를 빼지 않습니다.
-                qpos_xml = mj_data.qpos[7 : 7 + num_actions]  # MuJoCo XML 순서의 관절 위치, num_actions = 29
-                qpos_seq = np.array([qpos_xml[mujoco_joint_seq.index(joint)] for joint in isaac_joint_seq])
-                obs[offset:offset + num_actions] = qpos_seq - isaac_joint_pos_array# 논문의 q_joint,r (절대값)
-                offset += num_actions
-                
-                # 5. v_joint,r ∈ ℝ^29 : 로봇의 모든 Joint의 현재 각속도 (절대값)
-                qvel_xml = mj_data.qvel[6 : 6 + num_actions]  # MuJoCo XML 순서의 관절 속도
-                qvel_seq = np.array([qvel_xml[mujoco_joint_seq.index(joint)] for joint in isaac_joint_seq])
-                obs[offset:offset + num_actions] = qvel_seq  # 논문의 v_joint,r (절대값)
-                offset += num_actions   
-                
-                # 6. a_last ∈ ℝ^29 : Policy가 직전에 취한 행동 (메모리 역할)
-                obs[offset:offset + num_actions] = a_last  # 논문의 a_last (정책 메모리)
+                for obs_name in observation_names:
+                    if obs_name == "command":
+                        # Reference motion: joint position (29) + joint velocity (29) = 58
+                        obs[offset:offset + 58] = mocap_reference_phase
+                        offset += 58
+                        
+                    elif obs_name == "motion_anchor_pos_b":
+                        # Anchor body position error: 3D position
+                        obs[offset:offset + 3] = anchor_pos_track_error
+                        offset += 3
+                        
+                    elif obs_name == "motion_anchor_ori_b":
+                        # Anchor body orientation error: rotation matrix (6)
+                        obs[offset:offset + 6] = anchor_quat_track_error
+                        offset += 6
+                            
+                    elif obs_name == "base_lin_vel":
+                        # Robot's linear velocity in root frame
+                        obs[offset:offset + 3] = mj_data.qvel[0:3]
+                        offset += 3
+                        
+                    elif obs_name == "base_ang_vel":
+                        # Robot's angular velocity in root frame
+                        obs[offset:offset + 3] = mj_data.qvel[3:6]
+                        offset += 3
+                        
+                    elif obs_name == "joint_pos":
+                        # Robot's joint positions (relative to default)
+                        qpos_xml = mj_data.qpos[7 : 7 + num_actions]
+                        qpos_seq = np.array([qpos_xml[mujoco_joint_seq.index(joint)] for joint in isaac_joint_seq])
+                        obs[offset:offset + num_actions] = qpos_seq - isaac_joint_pos_array
+                        offset += num_actions
+                        
+                    elif obs_name == "joint_vel":
+                        # Robot's joint velocities
+                        qvel_xml = mj_data.qvel[6 : 6 + num_actions]
+                        qvel_seq = np.array([qvel_xml[mujoco_joint_seq.index(joint)] for joint in isaac_joint_seq])
+                        obs[offset:offset + num_actions] = qvel_seq
+                        offset += num_actions
+                        
+                    elif obs_name == "actions":
+                        # Previous actions (policy memory)
+                        obs[offset:offset + num_actions] = a_last
+                        offset += num_actions
 
                 # =============================================================================
                 # 7.3.4 ONNX 정책 추론 실행
@@ -385,7 +449,8 @@ if __name__ == "__main__":
                     isaac_joint_seq=isaac_joint_seq,
                     representative_body_ids=representative_body_ids,
                     isaac_representative_body_ids=isaac_representative_body_ids,
-                    representative_bodies=representative_bodies
+                    representative_bodies=representative_bodies,
+                    motion_length=motion_length
                 )
                     
                 # print(f"mj_data.qpos: {mj_data.qpos}\n")

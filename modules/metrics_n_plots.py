@@ -222,12 +222,12 @@ def initialize_tracking_metrics(mj_model, anchor_body_name, isaac_body_names):
     
     return mujoco_anchor_body_id, representative_body_ids, isaac_representative_body_ids, additional_metrics
 
-def calculate_and_log_performance_metrics(print_log,timestep, mj_data, mocap_joint_pos, mocap_joint_vel, 
+def calculate_and_log_performance_metrics(print_log, timestep, mj_data, mocap_joint_pos, mocap_joint_vel, 
                                         mocap_pos, mocap_quat, robot_anchor_pos, robot_anchor_quat,
                                         mocap_anchor_pos, mocap_anchor_quat, additional_metrics,
                                         log_interval, mujoco_joint_seq, isaac_joint_seq,
                                         representative_body_ids, isaac_representative_body_ids,
-                                        representative_bodies):
+                                        representative_bodies, motion_length=None):
     """
     성능 지표 계산 및 로깅을 담당하는 함수
     
@@ -249,24 +249,31 @@ def calculate_and_log_performance_metrics(print_log,timestep, mj_data, mocap_joi
         representative_body_ids: 대표 바디 ID 매핑
         isaac_representative_body_ids: Isaac Lab 바디 인덱스 매핑
         representative_bodies: 대표 바디 정보
+        motion_length: 모션 데이터 길이 (범위 초과 방지용)
     """
+    # Clamp timestep to motion data range to prevent index out of bounds
+    if motion_length is not None:
+        safe_timestep = min(timestep, motion_length - 1)
+    else:
+        safe_timestep = timestep
+    
     # 관절 데이터 수집 (Isaac Lab 순서로 변환)
     current_joint_pos = mj_data.qpos[7:]  # 현재 관절 위치 (MuJoCo 순서)
-    target_joint_pos_isaac = mocap_joint_pos[timestep, :]  # 목표 관절 위치 (Isaac 순서)
+    target_joint_pos_isaac = mocap_joint_pos[safe_timestep, :]  # 목표 관절 위치 (Isaac 순서)
     current_joint_pos_isaac = np.array([current_joint_pos[mujoco_joint_seq.index(joint)] for joint in isaac_joint_seq])
     
     current_joint_vel = mj_data.qvel[6:]  # 현재 관절 속도 (MuJoCo 순서)
-    target_joint_vel_isaac = mocap_joint_vel[timestep, :]  # 목표 관절 속도 (Isaac 순서)
+    target_joint_vel_isaac = mocap_joint_vel[safe_timestep, :]  # 목표 관절 속도 (Isaac 순서)
     current_joint_vel_isaac = np.array([current_joint_vel[mujoco_joint_seq.index(joint)] for joint in isaac_joint_seq])
     
     # 바디 부위 데이터 수집 (대표 body들만)
     robot_body_pos = np.array([mj_data.xpos[representative_body_ids[key]] for key in representative_bodies.keys() 
                              if key in representative_body_ids])
-    mocap_body_pos = np.array([mocap_pos[timestep, isaac_representative_body_ids[key], :] for key in representative_bodies.keys() 
+    mocap_body_pos = np.array([mocap_pos[safe_timestep, isaac_representative_body_ids[key], :] for key in representative_bodies.keys() 
                              if key in isaac_representative_body_ids])
     robot_body_quat = np.array([mj_data.xquat[representative_body_ids[key]] for key in representative_bodies.keys() 
                               if key in representative_body_ids])
-    mocap_body_quat = np.array([mocap_quat[timestep, isaac_representative_body_ids[key], :] for key in representative_bodies.keys() 
+    mocap_body_quat = np.array([mocap_quat[safe_timestep, isaac_representative_body_ids[key], :] for key in representative_bodies.keys() 
                               if key in isaac_representative_body_ids])
     
     # 바디 속도 데이터 (간단히 0으로 설정 - 실제로는 이전 프레임과의 차이로 계산 가능)
