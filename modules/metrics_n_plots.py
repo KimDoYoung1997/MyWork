@@ -84,7 +84,7 @@ def calculate_additional_metrics(robot_anchor_pos_w, robot_anchor_quat, mocap_an
     
     return metrics
 
-def save_performance_plots(additional_metrics, save_dir="/home/keti/whole_body_tracking/scripts/Beyond_mimic_sim2sim_G1/performance_plots", simulation_dt=0.005, control_decimation=4):
+def save_performance_plots(additional_metrics, save_dir="/home/keti/whole_body_tracking/scripts/Beyond_mimic_sim2sim_G1/performance_plots", simulation_dt=0.005, control_decimation=4, policy_suffix=None, motion_file=None, policy_file=None):
     """
     commands.py 기반 성능 지표들을 시각화하고 저장합니다.
     
@@ -93,7 +93,14 @@ def save_performance_plots(additional_metrics, save_dir="/home/keti/whole_body_t
         save_dir: 저장할 디렉토리
         simulation_dt: 시뮬레이션 타임스텝 (초)
         control_decimation: 제어기 업데이트 주파수 (시뮬레이션 스텝 대비)
+        policy_suffix: 정책 파일 suffix (예: woSE_5500)
+        motion_file: 모션 파일명 (예: fight1_subject2)
+        policy_file: 정책 파일명 (예: fight1_subject2_woSE_5500)
     """
+    # Add policy_suffix to save directory if provided
+    if policy_suffix:
+        save_dir = os.path.join(save_dir, policy_suffix)
+    
     # 저장 디렉토리 생성
     os.makedirs(save_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -106,9 +113,15 @@ def save_performance_plots(additional_metrics, save_dir="/home/keti/whole_body_t
     else:
         time_axis = None
     
+    # Create title with motion and policy information
+    if motion_file and policy_file:
+        title = f'Motion: {motion_file}, Policy: {policy_file}'
+    else:
+        title = 'Sim-to-Sim Deploy Performance Metrics (commands.py based)'
+    
     # 1. 앵커 및 관절 성능 지표 플롯
     fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-    fig.suptitle('Sim-to-Sim Deploy Performance Metrics (commands.py based)', fontsize=16)
+    fig.suptitle(title, fontsize=16)
     
     # 앵커 위치 오차
     if 'error_anchor_body_pos' in additional_metrics and additional_metrics['error_anchor_body_pos']:
@@ -151,7 +164,7 @@ def save_performance_plots(additional_metrics, save_dir="/home/keti/whole_body_t
         'error_non_anchor_body_rot' in additional_metrics and additional_metrics['error_non_anchor_body_rot']):
         
         fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-        fig.suptitle('Non-Anchor Body Part Tracking Performance (commands.py based)', fontsize=16)
+        fig.suptitle(title, fontsize=16)
         
         # 바디 위치 오차
         axes[0].plot(time_axis, additional_metrics['error_non_anchor_body_pos'], 'b-', linewidth=1)

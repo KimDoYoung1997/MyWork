@@ -500,8 +500,28 @@ if __name__ == "__main__":
     print("성능 플롯 생성 중...")
     print("="*60)
 
+    # Extract policy suffix from policy_file by removing motion_file prefix
+    # Example: fight1_subject2_woSE_5500 -> woSE_5500
+    policy_suffix = None
+    if args.policy_file.startswith(args.motion_file):
+        suffix_with_underscore = args.policy_file[len(args.motion_file):]
+        if suffix_with_underscore.startswith("_"):
+            policy_suffix = suffix_with_underscore[1:]  # Remove leading underscore
+        else:
+            policy_suffix = suffix_with_underscore
+    
+    # If policy_suffix couldn't be extracted, use the full policy_file name
+    if not policy_suffix:
+        policy_suffix = args.policy_file
+
     # 성능 플롯 저장 (commands.py 기반 지표만)
-    save_performance_plots(additional_metrics, save_dir=f"./performance_plots/{args.motion_file}_motion")
+    save_performance_plots(
+        additional_metrics, 
+        save_dir=f"./performance_plots/{args.motion_file}_motion",
+        policy_suffix=policy_suffix,
+        motion_file=args.motion_file,
+        policy_file=args.policy_file
+    )
 
     print("="*60)
     print("Beyond Mimic Sim-to-Sim Deploy 완료")
