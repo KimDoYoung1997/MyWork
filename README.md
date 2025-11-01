@@ -49,21 +49,27 @@ pip3 install onnxruntime
 # Activate conda environment first
 conda activate env_isaaclab
 
-# Use all options
-python3 main.py --motion_file dance2_subject5 --policy_file dance2_subject5 --duration 30.0
+# Example: Run with specific motion and policy
+python main.py --motion_file dance1_subject2 --policy dance1_subject2_woSE_5500 --duration 100
 
 # Show help
-python3 main.py --help
+python main.py --help
 ```
 
 #### Available Options:
 - `--motion_file`: Motion file name (without extension, default: dance1_subject1)
-- `--policy_file`: Policy file name (without extension, default: dance1_subject1)  
+- `--policy`: Policy file name (without extension, default: dance1_subject1)  
 - `--duration`: Simulation duration in seconds (default: 30.0)
 
-#### Available Motion/Policy Files:
-- `dance1_subject1` (default)
-- `dance2_subject5`
+#### Available Motion Files:
+- `dance1_subject2`
+- `fight1_subject2`
+
+#### Policy Naming Convention:
+- Standard: `{motion_name}_policy` (e.g., `dance1_subject2`)
+- woSE variant: `{motion_name}_woSE_{iteration}` (e.g., `dance1_subject2_woSE_5500`)
+  - **woSE** (without State Estimation): Trained without `motion_anchor_pos_b` (3D) and `base_lin_vel` (3D) observations
+  <!-- - More robust for sim-to-sim deployment as it relies on relative observations only -->
 
 
 ## Project Structure
