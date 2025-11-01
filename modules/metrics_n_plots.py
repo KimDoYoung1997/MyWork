@@ -184,7 +184,7 @@ def save_performance_plots(additional_metrics, save_dir="/home/keti/whole_body_t
         plt.savefig(f"{save_dir}/non_anchor_body_metrics_{timestamp}.png", dpi=300, bbox_inches='tight')
         plt.close()
     
-    print(f"📊 성능 플롯이 저장되었습니다: {save_dir}")
+    print(f" 성능 플롯이 저장되었습니다: {save_dir}")
     print(f"   - 앵커/관절 성능: anchor_joint_metrics_{timestamp}.png")
     if ('error_non_anchor_body_pos' in additional_metrics and additional_metrics['error_non_anchor_body_pos']):
         print(f"   - Non Anchor Body 부위 성능: non_anchor_body_metrics_{timestamp}.png")

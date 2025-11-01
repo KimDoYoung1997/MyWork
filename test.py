@@ -354,7 +354,7 @@ if __name__ == "__main__":
             additional_metrics, simulation_dt, control_decimation
         )
     else:
-        print("❌ 경고: 성능 데이터가 기록되지 않았습니다.")
+        print(" 경고: 성능 데이터가 기록되지 않았습니다.")
         print("   시뮬레이션이 정상적으로 실행되지 않았을 수 있습니다.")
         
         

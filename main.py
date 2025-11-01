@@ -58,7 +58,7 @@ import onnxruntime
 from modules.get_data import get_representative_bodies
 from modules.config_loader import get_mujoco_joint_sequence, get_isaac_body_names
 from modules.performance_evaluator import generate_final_performance_report
-from modules.transforms import compute_relative_transform_mujoco
+from modules.transforms import compute_relative_transform_mujoco, transform_velocity_to_local_frame
 from modules.controller import pd_control
 
 
@@ -145,7 +145,7 @@ if __name__ == "__main__":
     
     # 3. 학습된 정책 로드 (Isaac Lab에서 export된 ONNX 모델)
     # =============================================================================
-    policy_path = f"./policies/{args.policy_file}_policy.onnx"
+    policy_path = f"./policies/{args.policy_file}.onnx"
     num_actions = 29    # 29개의 관절 조절 (G1 로봇의 관절 수)
     
     # =============================================================================
@@ -364,23 +364,82 @@ if __name__ == "__main__":
                         offset += 58
                         
                     elif obs_name == "motion_anchor_pos_b":
-                        # Anchor body position error: 3D position
+                        # SE 인 경우에만 호출 되는 것이므로, woSE 인 경우에는 호출되지 않는다.
+                        # Anchor body position error: 3D position (already in robot body frame)
+                        # Computed by compute_relative_transform_mujoco() which includes frame transformation
+                        # This is ξ_{b_anchor} position part from the paper
                         obs[offset:offset + 3] = anchor_pos_track_error
                         offset += 3
                         
                     elif obs_name == "motion_anchor_ori_b":
-                        # Anchor body orientation error: rotation matrix (6)
+                        # Anchor body orientation error: rotation matrix first 2 columns (6D)
+                        # Computed by compute_relative_transform_mujoco() which includes frame transformation
+                        # This is ξ_{b_anchor} orientation part from the paper
                         obs[offset:offset + 6] = anchor_quat_track_error
                         offset += 6
                             
                     elif obs_name == "base_lin_vel":
-                        # Robot's linear velocity in root frame
-                        obs[offset:offset + 3] = mj_data.qvel[0:3]
+                        # ===================================================================
+                        # base_lin_vel: 로봇 linear velocity in LOCAL (root) frame
+                        # ===================================================================
+                        # 논문 요구사항: V_b_root expressed in LOCAL (root) frame
+                        # 
+                        # Isaac Lab:  자동으로 LOCAL frame velocity 제공
+                        # MuJoCo:     qvel[0:3]는 GLOBAL frame velocity 제공
+                        #             ↓ 좌표계 불일치!
+                        # 
+                        # 공식 출처 (MuJoCo GitHub Issue #691):
+                        # https://github.com/google-deepmind/mujoco/issues/691#issuecomment-1380347329
+                        # "Linear velocity in qvel is expressed in GLOBAL coordinates"
+                        # 
+                        # 해결책: GLOBAL → LOCAL 변환 필수!
+                        # ===================================================================
+                        
+                        # Step 1: MuJoCo qvel[0:3] = GLOBAL frame linear velocity
+                        global_lin_vel = mj_data.qvel[0:3]  # [vx_global, vy_global, vz_global]
+                        
+                        # Step 2: 로봇 anchor body의 현재 orientation (변환에 필요)
+                        robot_quat = mj_data.xquat[mujoco_anchor_body_id]  # [w, x, y, z]
+                        
+                        # Step 3: GLOBAL → LOCAL 좌표계 변환
+                        local_lin_vel = transform_velocity_to_local_frame(global_lin_vel, robot_quat)
+                        # 이제 LOCAL (body) frame에서 표현됨 → 논문 요구사항 충족!
+                                                
+                        # Step 4: LOCAL frame velocity를 observation에 저장
+                        obs[offset:offset + 3] = local_lin_vel  #  LOCAL frame (맞음!)
+                        # Policy가 기대하는 형식 (Isaac Lab과 동일)
+                        
                         offset += 3
                         
                     elif obs_name == "base_ang_vel":
-                        # Robot's angular velocity in root frame
-                        obs[offset:offset + 3] = mj_data.qvel[3:6]
+                        # ===================================================================
+                        # base_ang_vel: 로봇 angular velocity in LOCAL (root) frame
+                        # ===================================================================
+                        # **핵심: base_ang_vel은 변환하면 안 됨!**
+                        # 
+                        # 논문 요구사항: V_b_root expressed in LOCAL (root) frame
+                        # 
+                        # Isaac Lab:  자동으로 LOCAL frame angular velocity 제공
+                        # MuJoCo:     qvel[3:6]도 이미 LOCAL frame angular velocity 제공
+                        #             ↓ 좌표계 일치! (변환 불필요)
+                        # 
+                        # 공식 출처 (MuJoCo GitHub Issue #691):
+                        # https://github.com/google-deepmind/mujoco/issues/691#issuecomment-1380347329
+                        # "Rotational velocity in qvel is expressed in LOCAL coordinates"
+                        # 
+                        # 해결책: 변환 불필요! 그대로 사용 
+                        # ===================================================================
+                        # 
+                        # [MuJoCo qvel 좌표계 요약 (free joint)]
+                        # - qvel[0:3]: Linear velocity  in GLOBAL frame → 변환 필요 
+                        # - qvel[3:6]: Angular velocity in LOCAL frame  → 변환 불필요 
+                        # 
+                        # [실험 검증]
+                        #  변환 없이 사용: woSE, SE 모두 정상 작동
+                        #  변환 시도: 로봇 넘어짐 (이미 LOCAL이므로 중복 변환!)
+                        # ===================================================================
+                        
+                        obs[offset:offset + 3] = mj_data.qvel[3:6]  #  이미 LOCAL frame! (맞음!)
                         offset += 3
                         
                     elif obs_name == "joint_pos":
@@ -484,7 +543,7 @@ if __name__ == "__main__":
             additional_metrics, simulation_dt, control_decimation
         )
     else:
-        print("❌ 경고: 성능 데이터가 기록되지 않았습니다.")
+        print(" 경고: 성능 데이터가 기록되지 않았습니다.")
         print("   시뮬레이션이 정상적으로 실행되지 않았을 수 있습니다.")
         
         

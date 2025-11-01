@@ -107,7 +107,7 @@ def print_sim2sim_success_report(success_level: str) -> None:
         print("   Beyond Mimic 방법론이 성공적으로 구현되었습니다!")
         print("   Isaac Lab → MuJoCo 전환이 매우 정확하게 수행되었습니다.")
     elif success_level == "good":
-        print("\n✅ Sim-to-Sim 성공도: 양호 (Good)")
+        print("\n Sim-to-Sim 성공도: 양호 (Good)")
         print("   모션 트래킹이 잘 수행되고 있지만 개선 여지가 있습니다.")
         print("   좌표계 변환 없이도 상당한 성능을 달성했습니다.")
     else:
