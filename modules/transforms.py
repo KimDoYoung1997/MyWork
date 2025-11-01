@@ -107,66 +107,18 @@ def transform_velocity_to_local_frame(world_vel, body_quat):
     - R^T: 회전 행렬의 전치 (역회전)
     - v_local: LOCAL (body) frame에서 표현된 속도 벡터
     
-    === 이 함수를 사용하지 않으면? ===
-    
-    예시 상황: 로봇이 90도 왼쪽으로 회전한 상태
-    
-    [변환 전 - 잘못된 방법]
-    Robot state:
-      - GLOBAL frame에서 북쪽(+Y)을 향해 이동 중
-      - 로봇은 동쪽(+X)을 향함 (90도 회전)
-      
-    global_vel = [0.0, 1.0, 0.0]  # MuJoCo qvel[0:3]: GLOBAL frame에서 북쪽으로 1 m/s
-    
-    잘못된 코드:
-      obs[...] = global_vel  #  GLOBAL frame 그대로 사용 (틀림!)
-      
-    Policy가 받는 정보:
-      "로봇의 앞쪽(+X local)으로 0 m/s, 왼쪽(+Y local)으로 1 m/s"
-      → 하지만 실제로는 로봇 기준 왼쪽으로 이동 중!
-      → Policy가 혼란스러워함 (좌표계 불일치!)
-    
-    [변환 후 - 올바른 방법]
-    body_quat = [0.707, 0, 0, 0.707]  # MuJoCo xquat: 90도 Z축 회전
-    local_vel = transform_velocity_to_local_frame(global_vel, body_quat)
-    # local_vel = [1.0, 0.0, 0.0]   LOCAL frame에서 전방으로 1 m/s
-    
-    올바른 코드:
-      obs[...] = local_vel  #  LOCAL frame 변환 후 사용 (맞음!)
-      
-    Policy가 받는 정보:
-      "로봇의 앞쪽(+X local)으로 1 m/s, 왼쪽(+Y local)으로 0 m/s"
-      → 올바름! 로봇이 자신의 전방으로 이동하고 있다고 정확히 인식
-      → Policy가 올바른 제어 명령 생성 가능
-    
-    [실제 성능 차이]
-    - 변환 없이 사용 (GLOBAL): Policy 발산, 로봇 넘어짐 (Sim-to-Sim gap)
-    - 변환 후 사용 (LOCAL): Policy 안정적, 성능 "무지하게 좋아짐"
-    
-    [핵심 교훈]
-    같은 속도 벡터라도 좌표계에 따라 의미가 완전히 다름!
-    
-    MuJoCo 제공:     GLOBAL [0, 1, 0] = "세계 기준 북쪽으로 1 m/s"
-    논문 요구:       LOCAL [0, 1, 0] = "로봇 기준 왼쪽으로 1 m/s"
-                     ↑ 완전히 다른 의미!
-    
-    → Policy는 LOCAL frame 속도를 기대하므로 변환 필수!
-    → MuJoCo qvel[0:3] (GLOBAL) → transform → LOCAL → Policy
-    
     [참고: Angular velocity는?]
     MuJoCo qvel[3:6]는 이미 LOCAL frame이므로 변환 불필요!
     출처: https://github.com/google-deepmind/mujoco/issues/691
     """
-    local_vel = np.zeros(3)
-    quat_inv = np.zeros(4)
+    # Step 1: Convert quaternion to rotation matrix
+    # R represents the orientation of the body in the GLOBAL frame
+    R = quat_to_rotation_matrix(body_quat)  # 3x3 rotation matrix
     
-    # Step 1: Quaternion conjugate (inverse rotation for unit quaternions)
-    # Compute q^(-1) = q* (conjugate) for unit quaternion
-    mujoco.mju_negQuat(quat_inv, body_quat)
-    
-    # Step 2: Rotate velocity vector from GLOBAL frame to LOCAL frame
-    # v_local = R^T * v_global = rotate(v_global, q^(-1))
-    mujoco.mju_rotVecQuat(local_vel, world_vel, quat_inv)
+    # Step 2: Transform velocity from GLOBAL to LOCAL frame
+    # v_local = R^T * v_global (inverse rotation)
+    # R^T transforms vectors from GLOBAL frame to LOCAL (body) frame
+    local_vel = R.T @ world_vel
     
     return local_vel
 
