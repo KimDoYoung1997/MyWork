@@ -38,7 +38,7 @@ Isaac Lab에서 학습된 정책을 MuJoCo 환경에서 실행하여 모션 트�
     python main.py
 
 특정 모션과 정책 사용:
-    python main.py --motion_file dance2_subject5 --policy_file dance2_subject5
+    python main.py --motion_file dance1_subject2 --policy_file dance1_subject2
 
 도움말 보기:
     python main.py --help
@@ -69,21 +69,17 @@ def parse_arguments():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 사용 예시:
-  # 기본 사용법 (dance1_subject1 사용)
+  # 기본 사용법 (dance1_subject2 사용)
   python main.py
 
-  # 특정 모션과 정책 사용
-  python main.py --motion_file dance2_subject5 --policy_file dance2_subject5
 
-  # 시뮬레이션 시간 변경
-  python main.py --duration 10.0
 
   # 모든 옵션 사용
-  python main.py --motion_file dance2_subject5 --policy_file dance2_subject5 --duration 5.0
+  python main.py --motion_file dance1_subject2 --policy dance1_subject2_woSE_34000 --duration 100
 
 사용 가능한 모션/정책:
-  - dance1_subject1 (기본값)
-  - dance2_subject5
+  - dance1_subject2 (기본값)
+  - fight1_subject2
         """
     )
     
