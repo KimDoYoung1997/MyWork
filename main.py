@@ -225,7 +225,7 @@ if __name__ == "__main__":
     for obs_name in observation_names:
         if obs_name == "command":
             num_obs += 58  # reference motion (29 + 29)
-        elif obs_name == "motion_anchor_pos_b":
+        elif obs_name == "motion_anchor_pos_b": # woSE 일 경우 None
             num_obs += 3  # 3D position
         elif obs_name == "motion_anchor_ori_b":
             # motion_anchor_ori_b is always 6 dimensions (rotation matrix 2x3)
