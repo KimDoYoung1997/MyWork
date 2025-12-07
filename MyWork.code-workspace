@@ -7,5 +7,7 @@
 			"path": "../whole_body_tracking"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"python.languageServer": "None"
+	}
 }
