@@ -62,6 +62,7 @@ python main.py --help
 - `--duration`: Simulation duration in seconds (default: 30.0)
 
 #### Available Motion Files:
+- `dance1_subject1`
 - `dance1_subject2`
 - `fight1_subject2`
 - `fallAndGetUp1_subject1`
