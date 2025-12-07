@@ -64,6 +64,9 @@ python main.py --help
 #### Available Motion Files:
 - `dance1_subject2`
 - `fight1_subject2`
+- `fallAndGetUp1_subject1`
+- `fallAndGetUp2_subject2`
+- `sprint1_subject4`
 
 #### Policy Naming Convention:
 - Standard: `{motion_name}_policy` (e.g., `dance1_subject2`)
