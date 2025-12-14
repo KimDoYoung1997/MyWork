@@ -6,10 +6,24 @@ import mujoco
 from modules.get_data import get_representative_bodies, get_mujoco_body_ids, get_isaac_body_indices
 
 def quat_error_magnitude(q1, q2):
-    """쿼터니언 간의 각도 차이를 계산합니다 (Isaac Lab의 quat_error_magnitude와 동일)"""
+    """쿼터니언 간의 각도 차이(회전 오차)를 계산
+    
+    Isaac Lab의 quat_error_magnitude와 동일한 구현입니다.
+    
+    Args:
+        q1: 첫 번째 쿼터니언 (4,) [w, x, y, z]
+        q2: 두 번째 쿼터니언 (4,) [w, x, y, z]
+    
+    Returns:
+        float: 두 쿼터니언 간의 각도 차이 [rad] (0 ~ π)
+        
+    수학적 배경:
+        θ = 2 * arccos(|q1 · q2|)
+        where |q1 · q2| is the absolute value of quaternion dot product
+    """
     # 쿼터니언 내적을 통한 각도 차이 계산
     dot_product = np.abs(np.dot(q1, q2))
-    dot_product = np.clip(dot_product, 0.0, 1.0)  # 수치 안정성 확보
+    dot_product = np.clip(dot_product, 0.0, 1.0)  # 수치 안정성 확보 (부동소수점 오차 방지)
     return 2 * np.arccos(dot_product)
 
 
@@ -18,84 +32,94 @@ def calculate_additional_metrics(robot_anchor_pos_w, robot_anchor_quat, mocap_an
                                 robot_joint_pos, mocap_joint_pos, robot_joint_vel, mocap_joint_vel,
                                 robot_body_pos, mocap_body_pos, robot_body_quat, mocap_body_quat,
                                 robot_body_lin_vel_w, mocap_body_lin_vel_w, robot_body_ang_vel_w, mocap_body_ang_vel_w):
-    """
-    commands.py 기반 추가 성능 지표를 계산합니다.
+    """Beyond Mimic 논문의 성능 평가 지표들을 계산
+    
+    Isaac Lab의 commands.py reward 계산과 유사한 방식으로 
+    로봇과 reference motion 간의 추적 오차를 측정합니다.
     
     Args:
-        robot_anchor_pos: 로봇 앵커 위치 (3,)
-        robot_anchor_quat: 로봇 앵커 쿼터니언 (4,)
-        mocap_anchor_pos: 목표 앵커 위치 (3,)
-        mocap_anchor_quat: 목표 앵커 쿼터니언 (4,)
-        robot_joint_pos: 로봇 관절 위치 (29,)
-        mocap_joint_pos: 목표 관절 위치 (29,)
-        robot_joint_vel: 로봇 관절 속도 (29,)
-        mocap_joint_vel: 목표 관절 속도 (29,)
-        robot_body_pos: 로봇 바디 위치 (num_bodies, 3)
-        mocap_body_pos: 목표 바디 위치 (num_bodies, 3)
-        robot_body_quat: 로봇 바디 쿼터니언 (num_bodies, 4)
-        mocap_body_quat: 목표 바디 쿼터니언 (num_bodies, 4)
-        robot_body_lin_vel: 로봇 바디 선형 속도 (num_bodies, 3)
-        mocap_body_lin_vel: 목표 바디 선형 속도 (num_bodies, 3)
-        robot_body_ang_vel: 로봇 바디 각속도 (num_bodies, 3)
-        mocap_body_ang_vel: 목표 바디 각속도 (num_bodies, 3)
+        robot_anchor_pos_w: 로봇 앵커 위치 (3,) [m], world frame
+        robot_anchor_quat: 로봇 앵커 쿼터니언 (4,) [w,x,y,z]
+        mocap_anchor_pos_w: 목표 앵커 위치 (3,) [m], world frame
+        mocap_anchor_quat: 목표 앵커 쿼터니언 (4,) [w,x,y,z]
+        robot_joint_pos: 로봇 관절 위치 (29,) [rad], Isaac Lab 순서
+        mocap_joint_pos: 목표 관절 위치 (29,) [rad], Isaac Lab 순서
+        robot_joint_vel: 로봇 관절 속도 (29,) [rad/s], Isaac Lab 순서
+        mocap_joint_vel: 목표 관절 속도 (29,) [rad/s], Isaac Lab 순서
+        robot_body_pos: 로봇 대표 바디 위치 (num_bodies, 3) [m], world frame
+        mocap_body_pos: 목표 대표 바디 위치 (num_bodies, 3) [m], world frame
+        robot_body_quat: 로봇 대표 바디 쿼터니언 (num_bodies, 4) [w,x,y,z]
+        mocap_body_quat: 목표 대표 바디 쿼터니언 (num_bodies, 4) [w,x,y,z]
+        robot_body_lin_vel_w: 로봇 대표 바디 선형 속도 (num_bodies, 3) [m/s] (현재 미사용)
+        mocap_body_lin_vel_w: 목표 대표 바디 선형 속도 (num_bodies, 3) [m/s] (현재 미사용)
+        robot_body_ang_vel_w: 로봇 대표 바디 각속도 (num_bodies, 3) [rad/s] (현재 미사용)
+        mocap_body_ang_vel_w: 목표 대표 바디 각속도 (num_bodies, 3) [rad/s] (현재 미사용)
     
     Returns:
-        dict: 추가 성능 지표들
+        dict: 성능 지표 딕셔너리
+            - error_anchor_body_pos: Anchor body 위치 오차 [m]
+            - error_anchor_body_rot: Anchor body 회전 오차 [rad]
+            - error_joint_pos: 전체 관절 위치 오차 [rad]
+            - error_joint_vel: 전체 관절 속도 오차 [rad/s]
+            - error_non_anchor_body_pos: 대표 body 위치 오차 평균 [m]
+            - error_non_anchor_body_rot: 대표 body 회전 오차 평균 [rad]
     """
     metrics = {}
     
-    # 1. 앵커 바디 추적 성능 (commands.py 기반)
-    # 앵커 바디(torso_link)의 위치 오차 - 논문의 ξ_{b_anchor} 위치 부분
-    # 로봇과 목표 모션 간의 앵커 바디 위치 차이를 유클리드 거리로 계산 (단위: m)
-    metrics['error_anchor_body_pos'] = np.linalg.norm(robot_anchor_pos_w - mocap_anchor_pos_w)
+    # 1. 앵커 바디(torso_link) 추적 성능
+    # World frame에서 로봇과 reference motion의 앵커 위치 차이
+    # 논문의 ξ_{b_anchor} 위치 부분과 관련 (실제 observation에서는 robot body frame으로 변환되어 사용됨)
+    metrics['error_anchor_body_pos'] = np.linalg.norm(robot_anchor_pos_w - mocap_anchor_pos_w)  # [m]
     
-    # 앵커 바디(torso_link)의 회전 오차 - 논문의 ξ_{b_anchor} 회전 부분
-    # 로봇과 목표 모션 간의 앵커 바디 자세 차이를 쿼터니언 오차로 계산 (단위: rad)
-    metrics['error_anchor_body_rot'] = quat_error_magnitude(robot_anchor_quat, mocap_anchor_quat)
+    # World frame에서 로봇과 reference motion의 앵커 자세 차이
+    # 논문의 ξ_{b_anchor} 회전 부분과 관련 (실제 observation에서는 robot body frame으로 변환되어 사용됨)
+    metrics['error_anchor_body_rot'] = quat_error_magnitude(robot_anchor_quat, mocap_anchor_quat)  # [rad]
     
-    # 2. 관절 추적 성능 (commands.py 기반)
-    # 전체 관절의 위치 오차 - 모든 관절의 위치 차이를 유클리드 거리로 계산 (단위: rad)
-    # 이는 로봇이 목표 모션의 관절 위치를 얼마나 정확히 따라가는지를 측정
-    metrics['error_joint_pos'] = np.linalg.norm(robot_joint_pos - mocap_joint_pos)
+    # 2. 관절 추적 성능
+    # 전체 관절(29개)의 위치 차이를 L2 norm으로 계산
+    # 로봇이 reference motion의 관절 각도를 얼마나 정확히 재현하는지 측정
+    metrics['error_joint_pos'] = np.linalg.norm(robot_joint_pos - mocap_joint_pos)  # [rad]
     
-    # 전체 관절의 속도 오차 - 모든 관절의 속도 차이를 유클리드 거리로 계산 (단위: rad/s)
-    # 이는 로봇이 목표 모션의 관절 속도를 얼마나 정확히 따라가는지를 측정
-    metrics['error_joint_vel'] = np.linalg.norm(robot_joint_vel - mocap_joint_vel)
+    # 전체 관절(29개)의 속도 차이를 L2 norm으로 계산
+    # 로봇이 reference motion의 관절 속도를 얼마나 정확히 재현하는지 측정
+    metrics['error_joint_vel'] = np.linalg.norm(robot_joint_vel - mocap_joint_vel)  # [rad/s]
     
-    # 3. 바디 부위 추적 성능 (commands.py 기반)
-    # 대표 바디들(손목, 발목 등)의 추적 성능을 평가
+    # 3. 대표 바디(손목, 발목) 추적 성능
+    # End-effector tracking performance for hands and feet
     if robot_body_pos is not None and mocap_body_pos is not None:
-        # 대표 바디들의 위치 오차 - 각 바디별 위치 차이의 평균 (단위: m)
-        # 손목, 발목 등 주요 부위가 목표 모션과 얼마나 일치하는지 측정
-        metrics['error_non_anchor_body_pos'] = np.mean(np.linalg.norm(robot_body_pos - mocap_body_pos, axis=-1))
+        # 대표 바디들의 world frame 위치 오차 평균
+        # 손목, 발목 등 end-effector가 reference motion과 얼마나 일치하는지 측정
+        metrics['error_non_anchor_body_pos'] = np.mean(np.linalg.norm(robot_body_pos - mocap_body_pos, axis=-1))  # [m]
         
-        # 대표 바디들의 회전 오차 - 각 바디별 자세 차이의 평균 (단위: rad)
-        # 손목, 발목 등 주요 부위의 자세가 목표 모션과 얼마나 일치하는지 측정
+        # 대표 바디들의 자세 오차 평균
+        # 손목, 발목 등 end-effector의 orientation이 reference motion과 얼마나 일치하는지 측정
         metrics['error_non_anchor_body_rot'] = np.mean([quat_error_magnitude(robot_body_quat[i], mocap_body_quat[i]) 
-                                           for i in range(len(robot_body_quat))])
+                                           for i in range(len(robot_body_quat))])  # [rad]
         
-        # # 대표 바디들의 선형 속도 오차 - 각 바디별 선형 속도 차이의 평균 (단위: m/s)
-        # # 현재는 실제 속도 데이터가 없어서 0으로 설정됨
-        # metrics['error_body_lin_vel'] = np.mean(np.linalg.norm(robot_body_lin_vel_w - mocap_body_lin_vel_w, axis=-1))
-        
-        # # 대표 바디들의 각속도 오차 - 각 바디별 각속도 차이의 평균 (단위: rad/s)
-        # # 현재는 실제 속도 데이터가 없어서 0으로 설정됨
-        # metrics['error_body_ang_vel'] = np.mean(np.linalg.norm(robot_body_ang_vel_w - mocap_body_ang_vel_w, axis=-1))
+        # NOTE: 속도 지표는 현재 미구현 (향후 확장 가능)
+        # metrics['error_body_lin_vel'] = np.mean(np.linalg.norm(robot_body_lin_vel_w - mocap_body_lin_vel_w, axis=-1))  # [m/s]
+        # metrics['error_body_ang_vel'] = np.mean(np.linalg.norm(robot_body_ang_vel_w - mocap_body_ang_vel_w, axis=-1))  # [rad/s]
     
     return metrics
 
-def save_performance_plots(additional_metrics, save_dir="/home/keti/whole_body_tracking/scripts/Beyond_mimic_sim2sim_G1/performance_plots", simulation_dt=0.005, control_decimation=4, policy_suffix=None, motion_file=None, policy_file=None):
-    """
-    commands.py 기반 성능 지표들을 시각화하고 저장합니다.
+def save_performance_plots(additional_metrics, save_dir="./performance_plots", simulation_dt=0.005, control_decimation=4, policy_suffix=None, motion_file=None, policy_file=None):
+    """성능 지표들을 시각화하여 PNG 파일로 저장
+    
+    Beyond Mimic 논문의 평가 지표를 시간에 따라 플롯하여 
+    모션 트래킹 성능을 시각적으로 분석합니다.
     
     Args:
-        additional_metrics: commands.py 기반 성능 지표 데이터
-        save_dir: 저장할 디렉토리
-        simulation_dt: 시뮬레이션 타임스텝 (초)
-        control_decimation: 제어기 업데이트 주파수 (시뮬레이션 스텝 대비)
-        policy_suffix: 정책 파일 suffix (예: woSE_5500)
-        motion_file: 모션 파일명 (예: fight1_subject2)
-        policy_file: 정책 파일명 (예: fight1_subject2_woSE_5500)
+        additional_metrics: 성능 지표 데이터 (calculate_additional_metrics() 반환값의 시계열)
+        save_dir: 저장할 디렉토리 (기본값: ./performance_plots)
+        simulation_dt: 시뮬레이션 타임스텝 (초, 기본값: 0.005 = 200Hz)
+        control_decimation: 제어 decimation (기본값: 4, 즉 50Hz 제어)
+        policy_suffix: 정책 파일 suffix (예: "woSE_5500", "9999")
+        motion_file: 모션 파일명 (예: "fight1_subject2")
+        policy_file: 정책 파일명 (예: "fight1_subject2_woSE_5500")
+    
+    생성되는 플롯:
+        - anchor_joint_metrics_[timestamp].png: 앵커 및 관절 추적 성능
+        - non_anchor_body_metrics_[timestamp].png: 대표 body 추적 성능
     """
     # Add policy_suffix to save directory if provided
     if policy_suffix:

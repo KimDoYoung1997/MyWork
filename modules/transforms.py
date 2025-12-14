@@ -124,50 +124,49 @@ def transform_velocity_to_local_frame(world_vel, body_quat):
 
 
 def compute_relative_transform_mujoco(mujoco_robot_anchor_pos_A, mujoco_robot_anchor_quat_A, isaac_ref_pos_B, isaac_ref_quat_B):
-    """
-    이 함수는 논문의 ξ_{b_anchor} 계산하기 위해 MuJoCo vs Isaac Lab 좌표계 차이를 보정함
-    "로봇(mujoco_robot_anchor_pos_A)을 기준으로 reference 모션(isaac_ref_pos_B)이 어디에/어떻게 위치하는가?"
+    """로봇 body frame 기준 상대 변환 계산 - 논문의 ξ_{b_anchor} 계산에 사용
+    
+    "로봇 앵커(A)를 기준으로 reference 모션 앵커(B)가 어디에/어떻게 위치하는가?"를 계산합니다.
     
     Args:
-        mujoco_robot_anchor_pos_A : 현재 Mujoco 로봇 앵커 바디 position (3,) [x, y, z], MuJoCo좌표계 기준 
-        mujoco_robot_anchor_quat_A : 현재 Mujoco 로봇 앵커 바디 orientation (4,) [w, x, y, z], MuJoCo좌표계 기준 
-        isaac_ref_pos_B : reference 모션 (Isaac) 앵커 바디 position (3,) [x, y, z], Isaac좌표계 기준 
-        isaac_ref_quat_B : reference 모션 (Isaac) 앵커 바디 orientation (4,) [w, x, y, z], Isaac좌표계 기준 
+        mujoco_robot_anchor_pos_A: 현재 로봇 앵커 바디 position (3,) [x, y, z], world frame
+        mujoco_robot_anchor_quat_A: 현재 로봇 앵커 바디 orientation (4,) [w, x, y, z]
+        isaac_ref_pos_B: reference 모션 앵커 바디 position (3,) [x, y, z], world frame
+        isaac_ref_quat_B: reference 모션 앵커 바디 orientation (4,) [w, x, y, z]
             
     Returns:
-        rel_pos: 로봇 기준 reference 모션의 상대 위치 (3,) - 논문의 ξ_{b_anchor} 위치 부분
-        rel_quat: 로봇 기준 reference 모션의 상대 회전 (4,) - 논문의 ξ_{b_anchor} 회전 부분
+        rel_pos: 로봇 body frame 기준 상대 위치 (3,) - 논문의 ξ_{b_anchor} 위치 부분
+        rel_quat: 로봇 body frame 기준 상대 회전 (4,) [w,x,y,z] - 논문의 ξ_{b_anchor} 회전 부분
         
     === 수학적 배경 ===
-    - T_A: Robot frame (mujoco_robot_anchor_pos_A)의 transformation matrix (현재 Mujoco 로봇 상태)
-    - T_B: Mocap frame (isaac_ref_pos_B)의 transformation matrix (목표 Reference Isaac 모션 상태)
-    - T_rel = T_A^(-1) * T_B: Robot 기준에서 Mocap의 상대 변환 (A --> B == B-A)
-    
+    - T_A: Robot anchor의 world frame transformation matrix (4x4)
+    - T_B: Mocap anchor의 world frame transformation matrix (4x4)
+    - T_rel = T_A^(-1) * T_B: Robot body frame 기준에서 Mocap의 상대 변환
     
     === 논문과의 연관성 ===
     논문의 Observation 구성: o = [c, **ξ_{b_anchor}**, V_{b_root}, q_joint,r, v_joint,r, a_last]
-    이 함수는 **ξ_{b_anchor}** ∈ ℝ^9 (3+6) : anchor_pos_track_error(3) + anchor_quat_track_error(6) 계산에 사용됩니다.
-    anchor_pos_track_error = reference 모션의 anchor position과 현재 로봇의 anchor position 간의 오차
-    anchor_quat_track_error = reference 모션의 anchor quaternion과 현재 로봇의 anchor quaternion 간의 오차
+    이 함수의 출력은 **ξ_{b_anchor}** ∈ ℝ^9 (3+6) 계산에 사용됩니다:
+    - rel_pos (3,) → anchor_pos_track_error (position part)
+    - rel_quat (4,) → anchor_quat_track_error (6D rotation representation으로 변환 후 사용)
     
-    === 중요 ===
-    이 함수는 이미 좌표계 변환을 포함하고 있습니다!
-    - T_A^(-1): Robot body frame으로의 좌표계 변환
-    - T_rel의 position 부분: 이미 robot body frame에서 표현된 상대 위치
+    === Sim-to-Sim 핵심 ===
+    이 함수는 robot body frame 기준 상대 변환을 계산하므로, MuJoCo와 Isaac Lab의
+    절대 좌표계(Z-up vs Y-up) 차이가 있어도 상대적 관계는 동일하게 계산됩니다.
     """
     # 1. 4x4 transformation matrices 생성
-    T_A = pose_to_transformation_matrix(mujoco_robot_anchor_pos_A, mujoco_robot_anchor_quat_A)  # Robot frame
-    T_B = pose_to_transformation_matrix(isaac_ref_pos_B, isaac_ref_quat_B)  # Mocap frame
+    T_A = pose_to_transformation_matrix(mujoco_robot_anchor_pos_A, mujoco_robot_anchor_quat_A)  # Robot anchor의 world frame pose
+    T_B = pose_to_transformation_matrix(isaac_ref_pos_B, isaac_ref_quat_B)  # Mocap anchor의 world frame pose
     
     # 2. 상대 변환 계산: T_rel = T_A^(-1) * T_B
-    T_A_inv = np.linalg.inv(T_A)  # Robot frame의 역변환
-    T_rel = T_A_inv @ T_B         # 상대 변환 행렬
+    # Robot body frame 기준에서 Mocap의 위치/자세를 표현
+    T_A_inv = np.linalg.inv(T_A)  # Robot frame의 역변환 (world → robot body frame)
+    T_rel = T_A_inv @ T_B         # 상대 변환 행렬 (robot body frame 기준)
     
     # 3. 결과 추출
-    rel_pos = T_rel[0:3, 3]        # 상대 위치 (A->B == B-A) , A : Mujoco, B : Isaac
-    rel_rotation = T_rel[0:3, 0:3] # 상대 회전 (A->B == B-A) , A : Mujoco, B : Isaac
+    rel_pos = T_rel[0:3, 3]        # 상대 위치 (3,) robot body frame에서 표현된 mocap anchor 위치
+    rel_rotation = T_rel[0:3, 0:3] # 상대 회전 (3x3) robot body frame에서 표현된 mocap anchor 자세
     
     # 4. 회전 행렬을 쿼터니언으로 변환
-    rel_quat: np.ndarray = rotation_matrix_to_quaternion(rel_rotation)  # 1 0 0 0 
+    rel_quat: np.ndarray = rotation_matrix_to_quaternion(rel_rotation)  # (4,) [w,x,y,z]
     
     return rel_pos, rel_quat

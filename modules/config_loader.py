@@ -31,14 +31,18 @@ def load_yaml_config(config_path: str) -> Dict[str, Any]:
 def get_mujoco_joint_sequence(config_dir: str = None) -> List[str]:
     """Load MuJoCo joint sequence from configuration file
     
+    MuJoCo XML 파일(g1.xml)에 정의된 관절 순서를 로드합니다.
+    Isaac Lab과 MuJoCo 간 관절 순서가 다르므로 이 매핑이 필요합니다.
+    
     Args:
         config_dir: Directory containing configuration files (optional)
+                    None이면 현재 파일의 상위 디렉토리의 config 폴더 사용
         
     Returns:
-        List of joint names in MuJoCo order
+        List of joint names in MuJoCo order (29개 관절)
     """
     if config_dir is None:
-        # Default to scripts/config directory
+        # Default to config directory relative to this module
         script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         config_dir = os.path.join(script_dir, 'config')
     
@@ -50,14 +54,19 @@ def get_mujoco_joint_sequence(config_dir: str = None) -> List[str]:
 def get_isaac_body_names(config_dir: str = None) -> List[str]:
     """Load Isaac Lab body names from configuration file
     
+    Isaac Lab에서 사용하는 body 이름 순서를 로드합니다.
+    모션 데이터(NPZ)의 body_pos_w, body_quat_w 배열이 이 순서를 따릅니다.
+    
     Args:
         config_dir: Directory containing configuration files (optional)
+                    None이면 현재 파일의 상위 디렉토리의 config 폴더 사용
         
     Returns:
-        List of body names in Isaac Lab order
+        List of body names in Isaac Lab order (30개 body)
+        인덱스 9 = 'torso_link' (anchor body)
     """
     if config_dir is None:
-        # Default to scripts/config directory
+        # Default to config directory relative to this module
         script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         config_dir = os.path.join(script_dir, 'config')
     

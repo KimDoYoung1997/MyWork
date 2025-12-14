@@ -69,17 +69,22 @@ def parse_arguments():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 사용 예시:
-  # 기본 사용법 (dance1_subject2 사용)
+  # 기본 사용법 (dance1_subject1 사용)
   python main.py
 
+  # 특정 모션과 정책 지정
+  python main.py --motion_file dance1_subject2 --policy_file dance1_subject2_9999
 
-
-  # 모든 옵션 사용
-  python main.py --motion_file dance1_subject2 --policy dance1_subject2_woSE_34000 --duration 100
+  # 모든 옵션 사용 예시
+  python main.py --motion_file fight1_subject2 --policy_file fight1_subject2_woSE_5500 --duration 100
 
 사용 가능한 모션/정책:
-  - dance1_subject2 (기본값)
-  - fight1_subject2
+  - dance1_subject1 (기본값)
+  - dance1_subject2 (9999, 5500, 34000, 47999 / woSE: 5500, 34000, 47999)
+  - fallAndGetUp1_subject1 (1000, 3000, 9999, 49999)
+  - fallAndGetUp2_subject2 (9999, 49999)
+  - fight1_subject2 (9999 / woSE: 5500)
+  - sprint1_subject4 (9999)
         """
     )
     
@@ -123,7 +128,7 @@ if __name__ == "__main__":
     # 1. 시뮬레이션 환경 설정
     # =============================================================================
     xml_path = "./unitree_description/mjcf/g1.xml"
-    simulation_duration = args.duration                                    # 명령행 인자로 받은 시뮬레이션 시간
+    simulation_duration = args.duration                                     # 명령행 인자로 받은 시뮬레이션 시간
     simulation_dt = 0.005                                                   # Isaac Lab과 동일한 시뮬레이션 타임스텝 (0.005초 = 200Hz)
     control_decimation = 4                                                  # Isaac Lab과 동일한 제어기 업데이트 주파수 (simulation_dt * control_decimation = 0.02초; 50Hz)    
     # =============================================================================
@@ -201,8 +206,8 @@ if __name__ == "__main__":
         
         if prop.key == "action_scale":
             # Policy 출력을 실제 joint 위치로 변환하는 스케일 팩터.
-            # 이는 Mujoco로 변환을 하지 않는데, 
-            # 논문의 액션 스케일링에 해당합니다.
+            # Isaac Lab 순서 그대로 유지 (MuJoCo 순서로 변환하지 않음)
+            # 논문의 액션 스케일링 q_{j,t} = α_j * a_{j,t} + q̄_j 에 해당
             isaac_action_scale_array = np.array([float(x) for x in prop.value.split(",")])
         
         if prop.key == "observation_names":
@@ -261,11 +266,11 @@ if __name__ == "__main__":
     a_last: np.ndarray = np.zeros((num_actions,), dtype=np.float32)  
 
     anchor_body_name = "torso_link"
-    # 초기 모션 데이터 (실제로는 루프 내에서 업데이트됨)
-    mujoco_current_target_pos = mujoco_initial_target_joint_pos.copy()             # 시뮬레이터가 (시작했을때 초기 관절 위치 배열을 mujoco_joint_pos_array에 저장
+    # 초기 목표 관절 위치 설정 (실제로는 루프 내에서 정책 출력으로 업데이트됨)
+    mujoco_current_target_pos = mujoco_initial_target_joint_pos.copy()  # MuJoCo 순서의 초기 관절 위치
 
-    # g1.xml에서 position, orientation 초기화 이후 (IsaacLab -> MuJoCo) joint 위치(자세) 초기화
-    mj_data.qpos[7:] = mujoco_current_target_pos                         # anchor body(torso)에 한해서는  $\hat T_{b_{anchor,r}}$ 와  $T_{b_{anchor,m}}$ 이 개념적으로 같다      
+    # g1.xml에서 position, orientation 초기화 이후 (Isaac Lab -> MuJoCo) joint 위치(자세) 초기화
+    mj_data.qpos[7:] = mujoco_current_target_pos  # qpos[7:]부터가 관절 위치 (0-6은 free joint: root position + quaternion)      
 
     # =============================================================================
 
@@ -280,9 +285,9 @@ if __name__ == "__main__":
     # =============================================================================
 
     timestep = 0
-    obs: np.ndarray = np.zeros(num_obs, dtype=np.float32)        # 논문의 o = [c, ξ_{b_anchor}, V_{b_root}, q_joint,r, v_joint,r, a_last] (160차원)
-    isaac_anchor_body_id: int = isaac_body_names.index(anchor_body_name)  # Isaac Lab에서는 9
-    counter = 0 # 제어 신호 적용 횟수
+    obs: np.ndarray = np.zeros(num_obs, dtype=np.float32)  # 논문의 o = [c, ξ_{b_anchor}, V_{b_root}, q_joint,r, v_joint,r, a_last] (차원은 정책에 따라 동적으로 계산됨)
+    isaac_anchor_body_id: int = isaac_body_names.index(anchor_body_name)  # Isaac Lab의 body 순서에서 torso_link 인덱스 (9)
+    counter = 0  # 물리 시뮬레이션 스텝 카운터 (제어 decimation 추적용)
     log_interval = 100  # 100 스텝마다 로깅
 
     with mujoco.viewer.launch_passive(mj_model, mj_data) as viewer:
@@ -324,32 +329,34 @@ if __name__ == "__main__":
                 mujoco_robot_anchor_pos: np.ndarray = mj_data.xpos[mujoco_anchor_body_id]              # 현재 로봇 앵커 바디 위치 (torso_link) , eg) array([-3.9635000e-03, -3.5901179e-21,  8.3332125e-01])
                 mujoco_robot_anchor_quat: np.ndarray = mj_data.xquat[mujoco_anchor_body_id]           # 현재 로봇 앵커 바디 자세 (torso_link)
                 
-                # 논문의 c = [q_joint,m, v_joint,m] 구성 (Reference phase) : 이 vector는 매 time step마다 policy에 입력되어 로봇의 다음 행동을 결정하는 데 사용됩니다.
-                mocap_reference_phase = np.concatenate((mocap_joint_pos[safe_timestep,:],mocap_joint_vel[safe_timestep,:]),axis=0)    # shape : (58,) = (29+29)의 concat
+                # 논문의 c = [q_joint,m, v_joint,m] 구성 (Reference motion command)
+                # 이 vector는 매 time step마다 policy에 입력되어 로봇의 다음 행동을 결정하는 데 사용됨
+                mocap_reference_phase = np.concatenate((mocap_joint_pos[safe_timestep,:],mocap_joint_vel[safe_timestep,:]),axis=0)  # c ∈ ℝ^58: shape (58,) = joint_pos(29) + joint_vel(29)
                 
-                # 목표 모션의 앵커 바디 상태, c ∈ ℝ^58
-                mocap_anchor_pos = mocap_pos[safe_timestep, isaac_anchor_body_id, :]  # 목표 모션 앵커 바디 위치 eg) array([-3.6416985e-03, -7.5313076e-04,  8.4310246e-01], dtype=float32)
-                mocap_anchor_quat = mocap_quat[safe_timestep, isaac_anchor_body_id, :]  # 목표 모션 앵커 바디 자세
+                # 목표 모션의 앵커 바디 상태 추출
+                mocap_anchor_pos = mocap_pos[safe_timestep, isaac_anchor_body_id, :]  # 목표 모션 앵커 바디 위치 (3,)
+                mocap_anchor_quat = mocap_quat[safe_timestep, isaac_anchor_body_id, :]  # 목표 모션 앵커 바디 자세 (4,) [w,x,y,z]
                 
                 # =============================================================================
                 # 7.3.2 앵커링을 통한 상대 변환 계산 (논문의 ξ_{b_anchor})
                 # =============================================================================
                 # Sim-to-Sim 핵심: 좌표계 변환 없이 상대적 관계 계산
-                # anchor_pos_track_erro : 논문의 ξ_{b_anchor} 위치 부분
-                # anchor_quat_track_error : 논문의 ξ_{b_anchor} 회전 부분
-                # mujoco 좌표계에서 계산된 anchor_pos_track_error, anchor_quat_track_error 는 모션 기준에서 로봇 기준으로 변환된 값이다.
+                # anchor_pos_track_error: 논문의 ξ_{b_anchor} 위치 부분 (3,)
+                # temp_anchor_quat_track_error: 논문의 ξ_{b_anchor} 회전 부분 (일단 quaternion으로 계산)
+                # 계산 결과는 로봇 body frame에서 표현된 상대 변환 (T_A^(-1) * T_B)
                 anchor_pos_track_error, temp_anchor_quat_track_error = compute_relative_transform_mujoco(
-                    mujoco_robot_anchor_pos_A=mujoco_robot_anchor_pos,    # 로봇 기준
-                    mujoco_robot_anchor_quat_A=mujoco_robot_anchor_quat,  # 로봇 기준
-                    isaac_ref_pos_B=mocap_anchor_pos,    # 모션 기준
-                    isaac_ref_quat_B=mocap_anchor_quat   # 모션 기준
-                ) # timestep = 0 일때  anchor_pos_track_error = 0 0 0 에 가깝고  anchor_quat_track_error = 1 0 0 0 에 가깝다.
+                    mujoco_robot_anchor_pos_A=mujoco_robot_anchor_pos,    # 현재 로봇 앵커 위치 (MuJoCo)
+                    mujoco_robot_anchor_quat_A=mujoco_robot_anchor_quat,  # 현재 로봇 앵커 자세 (MuJoCo)
+                    isaac_ref_pos_B=mocap_anchor_pos,    # 목표 모션 앵커 위치 (Isaac Lab)
+                    isaac_ref_quat_B=mocap_anchor_quat   # 목표 모션 앵커 자세 (Isaac Lab)
+                )  # timestep=0일 때: anchor_pos_track_error ≈ [0,0,0], temp_anchor_quat_track_error ≈ [1,0,0,0] (초기 정렬)
                 
-                # 회전 행렬을 6차원 벡터로 변환 (논문의 ξ_{b_anchor} 회전 부분)
+                # 회전을 6차원 표현으로 변환 (논문의 ξ_{b_anchor} 회전 부분)
+                # Quaternion → Rotation Matrix → 6D representation (첫 2열 사용)
                 anchor_quat_track_error = np.zeros(9)
-                mujoco.mju_quat2Mat(anchor_quat_track_error, temp_anchor_quat_track_error)    # convert quaternion to 3D rotation matrix, 초기화된 anchor_ori 에 anchor_quat_track_error(quaternion) 의 회전 행렬 저장 , anchor_ori.shape=(9,)
-                anchor_quat_track_error = anchor_quat_track_error.reshape(3, 3)[:, :2]  # 첫 2열만 사용 (6차원)
-                anchor_quat_track_error = anchor_quat_track_error.reshape(-1,)
+                mujoco.mju_quat2Mat(anchor_quat_track_error, temp_anchor_quat_track_error)  # quaternion → 3x3 rotation matrix (flattened to 9D)
+                anchor_quat_track_error = anchor_quat_track_error.reshape(3, 3)[:, :2]  # 3x3 matrix의 첫 2열만 사용 → 3x2 = 6D
+                anchor_quat_track_error = anchor_quat_track_error.reshape(-1,)  # flatten to (6,)
                 
                 # =============================================================================
                 # 7.3.3 논문의 Observation 구성 구현 (Dynamic based on policy)
@@ -364,17 +371,18 @@ if __name__ == "__main__":
                         offset += 58
                         
                     elif obs_name == "motion_anchor_pos_b":
-                        # SE 인 경우에만 호출 되는 것이므로, woSE 인 경우에는 호출되지 않는다.
-                        # Anchor body position error: 3D position (already in robot body frame)
-                        # Computed by compute_relative_transform_mujoco() which includes frame transformation
-                        # This is ξ_{b_anchor} position part from the paper
+                        # Spatial Embedding (SE) 사용 시에만 포함 (woSE 정책에서는 제외됨)
+                        # Anchor body position error: 3D position (robot body frame 기준)
+                        # compute_relative_transform_mujoco()로 계산된 상대 위치
+                        # 논문의 ξ_{b_anchor} 위치 부분 (3,)
                         obs[offset:offset + 3] = anchor_pos_track_error
                         offset += 3
                         
                     elif obs_name == "motion_anchor_ori_b":
+                        # Spatial Embedding (SE) 사용 시에만 포함 (woSE 정책에서는 제외됨)
                         # Anchor body orientation error: rotation matrix first 2 columns (6D)
-                        # Computed by compute_relative_transform_mujoco() which includes frame transformation
-                        # This is ξ_{b_anchor} orientation part from the paper
+                        # compute_relative_transform_mujoco()로 계산된 상대 회전
+                        # 논문의 ξ_{b_anchor} 회전 부분 (6,)
                         obs[offset:offset + 6] = anchor_quat_track_error
                         offset += 6
                             
@@ -443,21 +451,24 @@ if __name__ == "__main__":
                         offset += 3
                         
                     elif obs_name == "joint_pos":
-                        # Robot's joint positions (relative to default)
-                        qpos_xml = mj_data.qpos[7 : 7 + num_actions]
-                        qpos_seq = np.array([qpos_xml[mujoco_joint_seq.index(joint)] for joint in isaac_joint_seq])
-                        obs[offset:offset + num_actions] = qpos_seq - isaac_joint_pos_array
+                        # 로봇의 현재 관절 위치 (기본 자세 대비 상대값)
+                        # 논문의 q_joint,r ∈ ℝ^29
+                        qpos_xml = mj_data.qpos[7 : 7 + num_actions]  # MuJoCo qpos[7:]부터 관절 위치
+                        qpos_seq = np.array([qpos_xml[mujoco_joint_seq.index(joint)] for joint in isaac_joint_seq])  # MuJoCo → Isaac Lab 순서 변환
+                        obs[offset:offset + num_actions] = qpos_seq - isaac_joint_pos_array  # 상대값: 현재 위치 - 기본 위치
                         offset += num_actions
                         
                     elif obs_name == "joint_vel":
-                        # Robot's joint velocities
-                        qvel_xml = mj_data.qvel[6 : 6 + num_actions]
-                        qvel_seq = np.array([qvel_xml[mujoco_joint_seq.index(joint)] for joint in isaac_joint_seq])
+                        # 로봇의 현재 관절 속도
+                        # 논문의 v_joint,r ∈ ℝ^29
+                        qvel_xml = mj_data.qvel[6 : 6 + num_actions]  # MuJoCo qvel[6:]부터 관절 속도
+                        qvel_seq = np.array([qvel_xml[mujoco_joint_seq.index(joint)] for joint in isaac_joint_seq])  # MuJoCo → Isaac Lab 순서 변환
                         obs[offset:offset + num_actions] = qvel_seq
                         offset += num_actions
                         
                     elif obs_name == "actions":
-                        # Previous actions (policy memory)
+                        # 이전 스텝의 정책 출력 (temporal memory 역할)
+                        # 논문의 a_last ∈ ℝ^29
                         obs[offset:offset + num_actions] = a_last
                         offset += num_actions
 
@@ -477,14 +488,15 @@ if __name__ == "__main__":
                 # 7.3.5 정책 출력을 실제 관절 위치로 변환
                 # =============================================================================
                 # 논문의 액션 스케일링: q_{j,t} = α_j * a_{j,t} + q̄_j
-                # α_j: action_scale, a_{j,t}: 정책 출력, q̄_j: 기본 관절 위치
-                isaac_current_target_pos = action * isaac_action_scale_array + isaac_joint_pos_array    # policy는 isaac_joint_pos_array 기준으로 학습됨
-                isaac_current_target_pos = isaac_current_target_pos.reshape(-1,)                        
-                # Isaac Lab 순서에서 MuJoCo 순서로 변환 (Sim-to-Sim 호환성)
-                # mujoco_current_target_pos 는 다시 pd_control 제어기에 입력되어 관절 토크 계산에 사용됨
-                mujoco_current_target_pos = np.array([isaac_current_target_pos[isaac_joint_seq.index(joint)] for joint in mujoco_joint_seq]) # isaac_joint_seq 순서를 mujoco_joint_seq 순서로 변환
+                # α_j: action_scale (Isaac Lab 순서)
+                # a_{j,t}: 정책 출력 (normalized action, Isaac Lab 순서)
+                # q̄_j: 기본 관절 위치 (Isaac Lab 순서)
+                isaac_current_target_pos = action * isaac_action_scale_array + isaac_joint_pos_array  # Isaac Lab 순서의 목표 관절 위치
+                isaac_current_target_pos = isaac_current_target_pos.reshape(-1,)
                 
-                # mujoco_initial_target_joint_pos =np.array([isaac_joint_pos_array[isaac_joint_seq.index(joint)] for joint in mujoco_joint_seq])
+                # Isaac Lab 순서에서 MuJoCo 순서로 변환 (Sim-to-Sim 호환성)
+                # 이 값이 다음 시뮬레이션 스텝에서 pd_control 제어기에 입력되어 관절 토크 계산에 사용됨
+                mujoco_current_target_pos = np.array([isaac_current_target_pos[isaac_joint_seq.index(joint)] for joint in mujoco_joint_seq])
 
                 calculate_and_log_performance_metrics(
                     print_log=True,
