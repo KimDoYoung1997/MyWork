@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "../whole_body_tracking"
+		},
+		{
+			"path": "../MimicKit"
 		}
 	],
 	"settings": {
